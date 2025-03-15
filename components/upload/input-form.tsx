@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState } from "react";
 import { TypewriterEffect } from "./typewriter-effect";
@@ -9,6 +9,7 @@ import { fileSchema } from "@/types/uploaded-file";
 import { useUploadThing } from "@/utils/uploadthing";
 import { toast } from "sonner";
 import { Spinner } from "../ui/spinner";
+import { generateSummary } from "@/actions/generate-summary";
 
 export const UploadDiv = () => {
     const [fileName, setFileName] = useState<string>("");
@@ -29,9 +30,12 @@ export const UploadDiv = () => {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
-        const formData = new FormData(e.currentTarget);
-        const file = formData.get('file') as File;
 
+        // Extract the file from form data
+        const formData = new FormData(e.currentTarget);
+        const file = formData.get("file") as File;
+
+        // Validate the file against fileSchema
         const { success } = fileSchema.safeParse({ file });
         if (!success) {
             toast.error("Invalid file. Please upload a valid PDF.");
@@ -39,10 +43,31 @@ export const UploadDiv = () => {
             return;
         }
 
-        await startUpload([file]);
-        setLoading(false);
-        setFileName("");
-        toast.success("File uploaded successfully");
+        // Show loading toast before upload starts
+        const loadingToast = toast.loading("Hang tight, processing your PDF...");
+
+        // Upload the file
+        try {
+            const res = await startUpload([file]);
+            toast.dismiss(loadingToast);
+            if (!res) {
+                toast.error("Something went wrong. Please try again.");
+                return;
+            }
+            // toast.success("File uploaded successfully 🎉");
+            setFileName("");
+
+            //parse the pdf and feed it to LLM
+            const serverData = res[0].serverData
+            console.log("ServerData:", serverData);
+            const text = await generateSummary(serverData);
+            console.log({ text })
+        } catch (error) {
+            toast.dismiss(loadingToast);
+            toast.error("Upload failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -62,7 +87,11 @@ export const UploadDiv = () => {
                             {fileName || "Choose File"}
                         </div>
                     </label>
-                    <Button type="submit" className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg cursor-pointer min-w-[120px]">
+                    <Button
+                        type="submit"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg cursor-pointer min-w-[120px]"
+                        disabled={loading}
+                    >
                         {loading ? <Spinner /> : <><span>Upload</span><Upload size={18} /></>}
                     </Button>
                 </form>
